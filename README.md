@@ -9,12 +9,6 @@ This extrasmall image was created for **tests purpose** only!
 List of all available tags is [here](https://hub.docker.com/r/ferilagi/invis-routeros7/tags/),
 `latest` will be used by default.
 
-```dockerfile
-FROM evilfreelancer/docker-routeros
-ADD ["your-scripts.sh", "/"]
-RUN /your-scripts.sh
-```
-
 ### Use image from docker hub
 
 ```bash
