@@ -38,7 +38,7 @@ RUN mkdir -p /dev/net && \
     chmod 666 /dev/net/tun
 
 # EXPOSE ROUTEROS PORTS
-#EXPOSE 5900        # VNC (optional)
+EXPOSE 5900        # VNC (optional)
 
 # FTP
 # EXPOSE 21 
