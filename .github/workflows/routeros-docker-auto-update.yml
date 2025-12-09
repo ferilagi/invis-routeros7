@@ -2,24 +2,26 @@ name: RouterOS Docker Auto Update
 
 on:
   schedule:
-    - cron: "0 6 * * *" # Setiap jam 6 pagi UTC
-  workflow_dispatch: # Manual trigger
+    - cron: "0 6 * * *"
+  workflow_dispatch:
   push:
     branches: [main]
 
 permissions:
-  contents: write # Untuk push ke repo, create tags, releases
+  contents: write
 
 jobs:
-  update-build-push:
+  check-and-update:
     runs-on: ubuntu-latest
+    outputs:
+      update_needed: ${{ steps.run-script.outputs.update_needed }}
+      new_version: ${{ steps.run-script.outputs.new_version }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # GITHUB_TOKEN otomatis tersedia, tidak perlu setup
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Git
@@ -27,41 +29,67 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
 
-      - name: Run Update Script
-        id: update
+      - name: Run update script
+        id: run-script
         run: |
           chmod +x git-action-cron.sh
-          ./git-action-cron.sh
-        #continue-on-error: true # Lanjut meski tidak ada update
 
-      - name: Set up QEMU for multi-arch
+          # Simpan output script
+          OUTPUT=$(./git-action-cron.sh 2>&1)
+          EXIT_CODE=$?
+
+          echo "=== Script Output ==="
+          echo "$OUTPUT"
+          echo "=== Exit Code: $EXIT_CODE ==="
+
+          # Parse output untuk menentukan apakah update dibutuhkan
+          if [[ $EXIT_CODE -eq 0 ]] && echo "$OUTPUT" | grep -q "Already up to date"; then
+            echo "✅ No update needed"
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          elif [[ $EXIT_CODE -eq 0 ]] && echo "$OUTPUT" | grep -q "Update completed successfully"; then
+            echo "✅ Update successful"
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            
+            # Extract version dari output
+            NEW_VERSION=$(echo "$OUTPUT" | grep -o "New version: [0-9.]*" | awk '{print $3}')
+            if [[ -z "$NEW_VERSION" ]]; then
+              NEW_VERSION=$(grep 'ARG ROUTEROS_VERSION=' Dockerfile | cut -d'"' -f2)
+            fi
+            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Error or unexpected output"
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-push:
+    needs: check-and-update
+    if: needs.check-and-update.outputs.update_needed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        id: buildx
-
-      - name: Login to DockerHub
+      - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      #- name: Login to GitHub Container Registry
-      #  uses: docker/login-action@v3
-      #  with:
-      #    registry: ghcr.io
-      #    username: ${{ github.actor }}
-      #    password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract version from Dockerfile
+      - name: Get version for build
         id: version
         run: |
           VERSION=$(grep 'ARG ROUTEROS_VERSION=' Dockerfile | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building RouterOS $VERSION"
+          echo "Building version: $VERSION"
 
-      - name: Build and push multi-arch to Docker Hub
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -70,58 +98,14 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/ros7:${{ steps.version.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/ros7:latest
-          # Untuk GitHub Container Registry (dikomen dulu):
-          # ghcr.io/${{ github.repository }}/ros7:${{ steps.version.outputs.version }}
-          # ghcr.io/${{ github.repository }}/ros7:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             ROUTEROS_VERSION=${{ steps.version.outputs.version }}
-            TARGETPLATFORM=${{ 'TARGETPLATFORM' }}
 
       - name: Create GitHub Release
-        if: success()
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: RouterOS ${{ steps.version.outputs.version }}
-          body: |
-            # RouterOS ${{ steps.version.outputs.version }}
-
-            Automated build of Mikrotik RouterOS ${{ steps.version.outputs.version }}
-
-            ## 🐳 Docker Image
-
-            ```bash
-            # Pull latest version
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ros7:${{ steps.version.outputs.version }}
-
-            # Or always get the latest
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/ros7:latest
-            ```
-
-            ## 📦 Multi-arch Support
-            - ✅ **linux/amd64** (x86_64, Intel/AMD)
-            - ✅ **linux/arm64** (ARM64, Apple Silicon, Raspberry Pi 4)
-
-            ## 🚀 Quick Start
-            ```bash
-            docker run -d \
-              --name routeros \
-              --privileged \
-              --cap-add=NET_ADMIN \
-              --device /dev/net/tun \
-              -p 8291:8291 \
-              -p 8728:8728 \
-              -p 8729:8729 \
-              ${{ secrets.DOCKERHUB_USERNAME }}/ros7:latest
-            ```
-
-            ## 📄 Source Code
-            - [Dockerfile](https://github.com/${{ github.repository }}/blob/main/Dockerfile)
-            - [GitHub Repository](https://github.com/${{ github.repository }})
-          draft: false
-          prerelease: false
-          files: |
-            Dockerfile
-            README.md
+          generate_release_notes: true
