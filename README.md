@@ -32,14 +32,14 @@ services:
     devices:
       - /dev/net/tun
     ports:
-      -  "5900:5900"
+      - "5900:5900"
       - "8291:8291"
       #- "2222:22"
       #- "28728:8728"
       - "28729:8729"
      environment:
       - MAC_ADDRESS=54:05:AB:54:11:AB
-      - ENABLE_VNC=false
+      - ENABLE_VNC=true
 ```
 
 Now you can connect to your RouterOS container via VNC protocol

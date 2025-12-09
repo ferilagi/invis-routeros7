@@ -257,7 +257,7 @@ QEMU_PARAMS+=($NETWORK_OPTION)
 QEMU_PARAMS+=(-hda "chr.vdi")
 
 # VNC jika di-enable via env
-if [[ "${ENABLE_VNC:-}" == "yes" ]] || [[ "${ENABLE_VNC:-}" == "1" ]]; then
+if [[ "${ENABLE_VNC:-}" == "true" ]] || [[ "${ENABLE_VNC:-}" == "1" ]]; then
     QEMU_PARAMS+=(-vnc "0.0.0.0:0,password=on")
     echo "VNC enabled on port 5900"
 fi
