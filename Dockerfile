@@ -52,19 +52,12 @@ RUN mkdir -p /dev/net && \
 
 # EXPOSE ROUTEROS PORTS
 #EXPOSE 5900        # VNC (optional)
-EXPOSE 21           # FTP
-EXPOSE 22           # SSH
-EXPOSE 23           # Telnet
-EXPOSE 80           # HTTP
-EXPOSE 443          # HTTPS
-EXPOSE 8291         # Winbox
-EXPOSE 8728         # API
-EXPOSE 8729         # API SSL
-EXPOSE 1194         # OpenVPN 1194/tcp, 1194/udp
-EXPOSE 1701         # L2TP
-EXPOSE 1723         # PPTP
-EXPOSE 1812/udp     # RADIUS Authentication
-EXPOSE 1813/udp     # RADIUS Accounting
+
+# FTP, SSH, Telnet, HTTP, HTTPS, Winbox,
+EXPOSE 21 22 23 80 443 8291         
+
+# API, API SSL, OpenVP(2 Port), L2TP, PPTP, RADIUS(2Udp Port)
+EXPOSE 8728 8729 1194 1701 1723 1812/udp 1813/udp
 
 FROM base AS downloader
 

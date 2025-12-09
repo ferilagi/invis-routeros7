@@ -3,44 +3,19 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-# Function to get latest versions
-get_latest_versions() {
-    local url="$1"
-    curl -s -f --retry 3 --retry-delay 2 "$url" | \
-        grep -o 'href="[^"]*\.vdi"' | \
-        sed 's/href="//;s/"$//' | \
-        sed 's:.*/::' | \
-        grep -E '^chr-[0-9]+\.[0-9]+\.[0-9]+\.vdi$' | \
-        sort -V -t. -k1,1n -k2,2n -k3,3n
-}
+echo "🔍 Checking for RouterOS updates via RSS feed..."
 
-# Function to get version from RSS
+# Function to get version from RSS - HANYA OUTPUT VERSION
 get_latest_from_rss() {
     local rss_url="https://cdn.mikrotik.com/routeros/latest-stable.rss"
     
-    echo "Fetching RSS feed from: $rss_url"
-    
-    # Download RSS feed dengan debugging
+    # Download RSS feed
     local rss_content
     rss_content=$(curl -s -f \
         --retry 3 \
         --retry-delay 2 \
         --max-time 10 \
-        "$rss_url" 2>/dev/null)
-    
-    local curl_exit=$?
-    echo "Curl exit code: $curl_exit"
-    echo "RSS content length: ${#rss_content} characters"
-    
-    if [[ $curl_exit -ne 0 ]]; then
-        echo "❌ Failed to download RSS feed"
-        return 1
-    fi
-    
-    # Debug: show first few lines
-    echo "First 200 chars of RSS:"
-    echo "${rss_content:0:200}"
-    echo "..."
+        "$rss_url" 2>/dev/null) || return 1
     
     # Extract version from <title> tag
     local version
@@ -49,75 +24,55 @@ get_latest_from_rss() {
         head -1 | \
         sed 's/<title>RouterOS //;s/ \[stable\]<\/title>//')
     
-    echo "Extracted version from title: '$version'"
-    
     if [[ -n "$version" ]] && [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "✅ Valid version from title: $version"
-        echo "$version"
+        echo "$version"  # HANYA INI YANG DI-OUTPUT
         return 0
     fi
     
     # Alternative: Extract from <link> tag
     version=$(echo "$rss_content" | \
-        grep -o '<link>https://mikrotik.com/download\?v=[0-9.]*</link>' | \
+        grep -o '<link>https://mikrotik.com/download?v=[0-9.]*</link>' | \
         head -1 | \
         sed 's|<link>https://mikrotik.com/download?v=||;s|</link>||')
     
-    echo "Extracted version from link: '$version'"
-    
     if [[ -n "$version" ]] && [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "✅ Valid version from link: $version"
-        echo "$version"
+        echo "$version"  # HANYA INI YANG DI-OUTPUT
         return 0
     fi
     
-    # Try alternative pattern for link
-    version=$(echo "$rss_content" | \
-        grep -o 'download?v=[0-9.]*' | \
-        head -1 | \
-        sed 's/download?v=//')
-    
-    echo "Extracted version from download link: '$version'"
-    
-    if [[ -n "$version" ]] && [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "✅ Valid version from download link: $version"
-        echo "$version"
-        return 0
-    fi
-    
-    echo "❌ Could not extract version from RSS"
     return 1
 }
 
-# Main execution
-echo "=== DEBUG MODE ==="
-echo "Current directory: $(pwd)"
-echo "Files in directory:"
-ls -la
-
-# Try to get version from RSS
-echo ""
+# Debug info terpisah
 echo "Trying RSS feed method..."
-VERSION=""
+echo "Fetching from: https://cdn.mikrotik.com/routeros/latest-stable.rss"
 
-if VERSION_RSS=$(get_latest_from_rss); then
-    echo "✅ RSS feed parsing successful"
-    VERSION="$VERSION_RSS"
+# Get version - redirect debug ke stderr
+VERSION=$(get_latest_from_rss 2>/dev/null)
+RSS_EXIT_CODE=$?
+
+echo "RSS function exit code: $RSS_EXIT_CODE"
+echo "Extracted version raw: '$VERSION'"
+
+if [[ $RSS_EXIT_CODE -eq 0 ]] && [[ -n "$VERSION" ]]; then
+    echo "✅ RSS feed successful"
     echo "Parsed version: $VERSION"
 else
-    echo "❌ RSS feed parsing failed"
+    echo "❌ RSS feed failed"
     exit 0  # Exit gracefully
 fi
 
 echo ""
 echo "=== VERSION VALIDATION ==="
-echo "Version to check: '$VERSION'"
-echo "Version length: ${#VERSION}"
 
 if [[ -z "$VERSION" ]]; then
     echo "❌ Version is empty"
     exit 0
 fi
+
+# Clean version - hapus whitespace/newlines
+VERSION=$(echo "$VERSION" | tr -d '[:space:]')
+echo "Cleaned version: '$VERSION'"
 
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "❌ Invalid version format: $VERSION"
