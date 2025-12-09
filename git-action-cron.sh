@@ -14,22 +14,82 @@ get_latest_versions() {
         sort -V -t. -k1,1n -k2,2n -k3,3n
 }
 
+# Function to get version from RSS Stable
+get_latest_from_rss() {
+    local rss_url="https://cdn.mikrotik.com/routeros/latest-stable.rss"
+    
+    echo "Fetching RSS feed from: $rss_url"
+    
+    # Download RSS feed
+    local rss_content
+    rss_content=$(curl -s -f \
+        --retry 3 \
+        --retry-delay 2 \
+        --max-time 10 \
+        "$rss_url" 2>/dev/null) || return 1
+    
+    # Extract version from <title> tag
+    local version
+    version=$(echo "$rss_content" | \
+        grep -o '<title>RouterOS [0-9.]* \[stable\]</title>' | \
+        head -1 | \
+        sed 's/<title>RouterOS //;s/ \[stable\]<\/title>//')
+    
+    if [[ -n "$version" ]] && [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$version"
+        return 0
+    fi
+    
+    # Alternative: Extract from <link> tag
+    version=$(echo "$rss_content" | \
+        grep -o '<link>https://mikrotik.com/download?v=[0-9.]*</link>' | \
+        head -1 | \
+        sed 's|<link>https://mikrotik.com/download?v=||;s|</link>||')
+    
+    if [[ -n "$version" ]] && [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$version"
+        return 0
+    fi
+    
+    return 1
+}
+
+# Function to get VDI filename from version
+get_vdi_filename() {
+    local version="$1"
+    echo "chr-${version}.vdi"
+}
+
 # Get versions from both pages dengan error handling
 echo "Fetching RouterOS versions..."
 VERSIONS=""
 
-if VERSION_ARCHIVE=$(get_latest_versions "https://mikrotik.com/download/archive"); then
-    VERSIONS="$VERSION_ARCHIVE"
-    echo "✓ Downloaded from archive page"
+if VERSION_RSS=$(get_latest_from_rss); then
+    echo "✅ RSS feed successful"
+    VERSION="$VERSION_RSS"
 else
-    echo "⚠️ Failed to download from archive page"
-fi
-
-if VERSION_DOWNLOAD=$(get_latest_versions "https://mikrotik.com/download"); then
-    VERSIONS+=$'\n'"$VERSION_DOWNLOAD"
-    echo "✓ Downloaded from download page"
-else
-    echo "⚠️ Failed to download from download page"
+    echo "❌ RSS feed failed, trying fallback HTML method..."
+    
+    # Fallback to HTML scraping (with improved parsing)
+    FALLBACK_URL="https://mikrotik.com/download"
+    
+    # Try multiple patterns
+    for pattern in 'chr-[0-9]*\.[0-9]*\.[0-9]*\.vdi' 'routeros/[0-9]*\.[0-9]*\.[0-9]*/' 'v=[0-9]*\.[0-9]*\.[0-9]*'; do
+        echo "Trying pattern: $pattern"
+        
+        if VERSION_HTML=$(curl -s -f --max-time 10 "$FALLBACK_URL" | \
+            grep -o -E "$pattern" | \
+            grep -E '[0-9]+\.[0-9]+\.[0-9]+' | \
+            sed 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/' | \
+            sort -Vu | tail -1); then
+            
+            if [[ -n "$VERSION_HTML" ]] && [[ "$VERSION_HTML" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                VERSION="$VERSION_HTML"
+                echo "✅ HTML fallback successful"
+                break
+            fi
+        fi
+    done
 fi
 
 if [[ -z "$VERSIONS" ]]; then

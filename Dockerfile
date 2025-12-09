@@ -4,7 +4,7 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
 # Set build stage
-FROM --platform=$BUILDPLATFORM alpine:latest AS base
+FROM alpine:latest AS base
 
 # Set shell options globally (RECOMMENDED)
 SHELL ["/bin/sh", "-xe", "-o", "pipefail", "-c"]

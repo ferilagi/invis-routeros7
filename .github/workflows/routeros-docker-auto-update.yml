@@ -29,7 +29,7 @@ jobs:
         run: |
           chmod +x git-action-cron.sh
           ./git-action-cron.sh
-        continue-on-error: true # Lanjut meski tidak ada update
+        #continue-on-error: true # Lanjut meski tidak ada update
 
       - name: Set up QEMU for multi-arch
         uses: docker/setup-qemu-action@v3
