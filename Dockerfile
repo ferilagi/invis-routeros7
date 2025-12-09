@@ -40,8 +40,11 @@ RUN mkdir -p /dev/net && \
 # EXPOSE ROUTEROS PORTS
 #EXPOSE 5900        # VNC (optional)
 
-# FTP, SSH, Telnet, HTTP, HTTPS, Winbox,
-EXPOSE 21 22 23 80 443 8291         
+# FTP
+# EXPOSE 21 
+
+# SSH, Telnet, HTTP, HTTPS, Winbox,
+EXPOSE 22 23 80 443 8291         
 
 # API, API SSL, OpenVP(2 Port), L2TP, PPTP, RADIUS(2Udp Port)
 EXPOSE 8728 8729 1194 1701 1723 1812/udp 1813/udp

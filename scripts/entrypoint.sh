@@ -3,7 +3,41 @@ set -e
 
 echo "=== Starting Mikrotik RouterOS Container ==="
 echo "Host Architecture: $(uname -m)"
-echo "Networking Mode: TAP/Bridge (requires /dev/net/tun)"
+
+# ======================
+# MAC ADDRESS GENERATION
+# ======================
+generate_mac_address() {
+    # Generate random MAC address dengan prefix Mikrotik (54:05:AB)
+    # atau gunakan custom prefix dari env
+    local prefix="${MAC_PREFIX:-54:05:AB}"
+    
+    # Generate random 3 octets terakhir
+    local octet4=$(printf '%02x' $((RANDOM % 256)))
+    local octet5=$(printf '%02x' $((RANDOM % 256)))
+    local octet6=$(printf '%02x' $((RANDOM % 256)))
+    
+    echo "${prefix}:${octet4}:${octet5}:${octet6}" | tr '[:lower:]' '[:upper:]'
+}
+
+# Get MAC address dari env atau generate random
+if [[ -n "${MAC_ADDRESS:-}" ]]; then
+    # Validasi format MAC address
+    if [[ "$MAC_ADDRESS" =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]; then
+        QEMU_MAC="$MAC_ADDRESS"
+        echo "Using custom MAC address from env: $QEMU_MAC"
+    else
+        echo "⚠️ Invalid MAC address format: $MAC_ADDRESS"
+        echo "Generating random MAC address instead..."
+        QEMU_MAC=$(generate_mac_address)
+    fi
+else
+    QEMU_MAC=$(generate_mac_address)
+    echo "Generated random MAC address: $QEMU_MAC"
+fi
+
+# Export untuk digunakan di script lain jika perlu
+export QEMU_MAC
 
 # ======================
 # PATHS CONFIGURATION
@@ -44,12 +78,13 @@ fi
 echo "TUN device available: /dev/net/tun"
 
 # ======================
-# BRIDGE NETWORK SETUP
+# BRIDGE & DHCP NETWORK SETUP
 # ======================
 QEMU_BRIDGE_ETH1='qemubr1'
 default_dev1='eth0'  # Default container interface
 DUMMY_DHCPD_IP='10.0.0.1'
 DHCPD_CONF_FILE='dhcpd.conf'
+DHCPD_LEASES_FILE='/var/lib/udhcpd/udhcpd.leases'
 
 function prepare_intf() {
    echo "Preparing interface $1 for bridge $2"
@@ -79,6 +114,14 @@ function prepare_intf() {
 }
 
 # Generate DHCPD config file
+echo "Setting up DHCP server..."
+
+# Create directory for DHCP leases
+mkdir -p /var/lib/udhcpd
+touch "$DHCPD_LEASES_FILE"
+chmod 644 "$DHCPD_LEASES_FILE"
+
+# Generate DHCPD config
 if [[ -f "generate-dhcpd-conf.py" ]] && [[ -x "generate-dhcpd-conf.py" ]]; then
     echo "Generating DHCP configuration..."
     python3 generate-dhcpd-conf.py $QEMU_BRIDGE_ETH1 > $DHCPD_CONF_FILE
@@ -99,16 +142,30 @@ EOF
     echo "Created default DHCP config"
 fi
 
+# Fix max_leases value if too high
+sed -i 's/max_leases[[:space:]]*[0-9]*/max_leases 100/' $DHCPD_CONF_FILE
+
+echo "DHCP configuration:"
+cat $DHCPD_CONF_FILE
+
 # Setup bridge
 prepare_intf $default_dev1 $QEMU_BRIDGE_ETH1
 
-# Start DHCPD server
+# Start DHCPD server if available
 if command -v udhcpd &> /dev/null; then
-    echo "Starting DHCP server on $QEMU_BRIDGE_ETH1..."
-    udhcpd -I $DUMMY_DHCPD_IP -f $DHCPD_CONF_FILE &
-    echo "DHCP server started"
+    echo "Starting DHCP server..."
+    
+    # Check if udhcpd can read config
+    if udhcpd -f -I $DUMMY_DHCPD_IP $DHCPD_CONF_FILE --no-pid; then
+        echo "✅ DHCP server test successful"
+        # Start in background
+        udhcpd -I $DUMMY_DHCPD_IP -f $DHCPD_CONF_FILE &
+        echo "✅ DHCP server started"
+    else
+        echo "⚠️ DHCP server test failed, continuing without DHCP"
+    fi
 else
-    echo "WARNING: udhcpd not found, DHCP server not started"
+    echo "⚠️ udhcpd not found, DHCP server disabled"
 fi
 
 
@@ -170,7 +227,7 @@ echo "  UP: $QEMU_IFUP"
 echo "  DOWN: $QEMU_IFDOWN"
 
 # Networking option
-NETWORK_OPTION="-nic tap,id=qemu1,mac=54:05:AB:CD:12:31,script=$QEMU_IFUP,downscript=$QEMU_IFDOWN"
+NETWORK_OPTION="-nic tap,id=qemu1,mac=$QEMU_MAC,script=$QEMU_IFUP,downscript=$QEMU_IFDOWN"
 
 # ======================
 # QEMU PARAMETERS
