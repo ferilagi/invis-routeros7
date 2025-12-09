@@ -29,21 +29,8 @@ RUN set -xe \
     jq \
     busybox-extras \
     netcat-openbsd \
-    tunctl \
-    udhcpd
-
-# Install QEMU x86_64 EMULATOR untuk semua platform
-# RouterOS hanya jalan di x86_64, jadi kita perlu qemu-system-x86_64
-RUN apk add --no-cache \
-    qemu-system-x86_64 \
-    qemu-img \
-    qemu-modules
-
-# Untuk ARM host, kita juga perlu beberapa dependencies tambahan
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then \
-        echo "Installing ARM emulation dependencies..." && \
-        apk add --no-cache qemu-x86_64; \
-    fi
+    qemu-x86_64 \
+    qemu-system-x86_64
 
 # Buat device node untuk /dev/net/tun
 RUN mkdir -p /dev/net && \
