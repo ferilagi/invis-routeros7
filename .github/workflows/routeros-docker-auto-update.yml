@@ -11,6 +11,9 @@ permissions:
   contents: write
 
 jobs:
+  # ============================
+  # CHECK & UPDATE VERSION
+  # ============================
   check-and-update:
     runs-on: ubuntu-latest
     outputs:
@@ -30,37 +33,45 @@ jobs:
           git config --global user.email "actions@github.com"
 
       - name: Run update script
-        id: run-script
+        id: update
         run: |
           chmod +x git-action-cron.sh
 
-          # Simpan output script
-          OUTPUT=$(./git-action-cron.sh 2>&1)
+          set +e
+          ./git-action-cron.sh
           EXIT_CODE=$?
+          set -e
 
-          echo "=== Script Output ==="
-          echo "$OUTPUT"
-          echo "=== Exit Code: $EXIT_CODE ==="
+          echo "Script exit code: $EXIT_CODE"
 
-          # Parse output untuk menentukan apakah update dibutuhkan
-          if [[ $EXIT_CODE -eq 0 ]] && echo "$OUTPUT" | grep -q "Already up to date"; then
-            echo "✅ No update needed"
+          # Exit code contract:
+          # 0  = no update
+          # 10 = updated successfully
+          # 20 = soft failure (RSS issue)
+          # 1  = hard failure
+
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "No update needed"
             echo "update_needed=false" >> $GITHUB_OUTPUT
-          elif [[ $EXIT_CODE -eq 0 ]] && echo "$OUTPUT" | grep -q "Update completed successfully"; then
-            echo "✅ Update successful"
+
+          elif [[ $EXIT_CODE -eq 10 ]]; then
+            echo "Update detected"
+            VERSION=$(grep 'ARG ROUTEROS_VERSION=' Dockerfile | cut -d'"' -f2)
             echo "update_needed=true" >> $GITHUB_OUTPUT
-            
-            # Extract version dari output
-            NEW_VERSION=$(echo "$OUTPUT" | grep -o "New version: [0-9.]*" | awk '{print $3}')
-            if [[ -z "$NEW_VERSION" ]]; then
-              NEW_VERSION=$(grep 'ARG ROUTEROS_VERSION=' Dockerfile | cut -d'"' -f2)
-            fi
-            echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Error or unexpected output"
+            echo "new_version=$VERSION" >> $GITHUB_OUTPUT
+
+          elif [[ $EXIT_CODE -eq 20 ]]; then
+            echo "Soft failure, skipping build"
             echo "update_needed=false" >> $GITHUB_OUTPUT
+
+          else
+            echo "Hard failure"
+            exit 1
           fi
 
+  # ============================
+  # BUILD & PUSH DOCKER IMAGE
+  # ============================
   build-and-push:
     needs: check-and-update
     if: needs.check-and-update.outputs.update_needed == 'true'

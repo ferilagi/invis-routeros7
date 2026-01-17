@@ -141,3 +141,4 @@ rm -f Dockerfile.bak
 
 echo "✅ Update completed successfully!"
 echo "📦 New version: $VERSION"
+exit 10
