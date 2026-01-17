@@ -38,7 +38,7 @@ RUN mkdir -p /dev/net && \
     chmod 666 /dev/net/tun
 
 # EXPOSE VNC (optional)
-# EXPOSE 5900
+EXPOSE 5900
 
 # FTP
 # EXPOSE 21 
