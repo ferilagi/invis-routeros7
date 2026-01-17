@@ -2,7 +2,7 @@ name: RouterOS Docker Auto Update
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 6 */3 * *"
   workflow_dispatch:
   push:
     branches: [main]
