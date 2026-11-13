@@ -154,15 +154,13 @@ prepare_intf $default_dev1 $QEMU_BRIDGE_ETH1
 # Start DHCPD server if available
 if command -v udhcpd &> /dev/null; then
     echo "Starting DHCP server..."
-    
-    # Check if udhcpd can read config
-    if udhcpd -f -I $DUMMY_DHCPD_IP $DHCPD_CONF_FILE --no-pid; then
-        echo "✅ DHCP server test successful"
-        # Start in background
-        udhcpd -I $DUMMY_DHCPD_IP -f $DHCPD_CONF_FILE &
-        echo "✅ DHCP server started"
+    udhcpd -I $DUMMY_DHCPD_IP -f $DHCPD_CONF_FILE &
+    DHCP_PID=$!
+    sleep 1
+    if kill -0 $DHCP_PID 2>/dev/null; then
+        echo "✅ DHCP server started (PID $DHCP_PID)"
     else
-        echo "⚠️ DHCP server test failed, continuing without DHCP"
+        echo "⚠️ DHCP server failed to start, continuing without DHCP"
     fi
 else
     echo "⚠️ udhcpd not found, DHCP server disabled"
