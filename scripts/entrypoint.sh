@@ -233,7 +233,8 @@ NETWORK_OPTION="-nic tap,id=qemu1,mac=$QEMU_MAC,script=$QEMU_IFUP,downscript=$QE
 QEMU_PARAMS=()
 
 # Basic parameters
-QEMU_PARAMS+=(-serial mon:stdio)
+QEMU_PARAMS+=(-serial "file:/var/log/routeros-serial.log")
+QEMU_PARAMS+=(-monitor none)
 QEMU_PARAMS+=(-nographic)
 QEMU_PARAMS+=(-m 256)
 QEMU_PARAMS+=(-smp "2,sockets=1,cores=2,threads=1")
@@ -269,10 +270,34 @@ fi
 # ======================
 # START ROUTEROS
 # ======================
-echo "=== Starting RouterOS with TAP Networking ==="
-echo "Command: $QEMU_CMD"
-for param in "${QEMU_PARAMS[@]}"; do
-    echo "  $param"
-done
+mkdir -p /var/log
+touch /var/log/routeros-serial.log
+
+printf '\n'
+printf '========================================================\n'
+printf '  Starting RouterOS (QEMU)\n'
+printf '========================================================\n'
+printf '  Binary     : %s\n' "$QEMU_CMD"
+printf '  Bridge     : %s\n' "$QEMU_BRIDGE_ETH1"
+printf '  MAC address: %s\n' "$QEMU_MAC"
+printf '  Mode       : %s\n' "$([[ "$KVM_AVAILABLE" == "yes" ]] && echo "KVM (native)" || echo "TCG emulation (slow)")"
+printf '  Serial log : /var/log/routeros-serial.log\n'
+printf '========================================================\n'
+printf '  First boot on ARM may take 10-30 minutes.\n'
+printf '========================================================\n'
+printf '\n'
+
+ESC=$(printf '\033')
+SOH=$(printf '\001')
+
+tail -F /var/log/routeros-serial.log 2>/dev/null \
+    | awk -v esc="$ESC" -v soh="$SOH" '{
+        gsub(esc "\\[[0-9;?]*[a-zA-Z]", "")
+        gsub(esc "[a-zA-Z]", "")
+        gsub(soh, "")
+        sub(/\r$/, "")
+        print "[ROS] " $0
+        fflush()
+    }' &
 
 exec $QEMU_CMD "${QEMU_PARAMS[@]}"
