@@ -89,8 +89,8 @@ RUN echo "=== Container Structure ===" && \
     ls -la /routeros_source/
 
 # Health check untuk RouterOS API port
-HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD nc -z localhost 8728 || exit 1
+#HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+#    CMD nc -z localhost 8728 || exit 1
 
 
 # Metadata labels
@@ -101,3 +101,7 @@ LABEL org.opencontainers.image.source="https://github.com/ferilagi/invis-routero
 LABEL org.opencontainers.image.licenses="MIT"
 
 ENTRYPOINT ["/routeros_source/entrypoint.sh"]
+
+# Healthcheck untuk RouterOS
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=900s \
+    CMD grep -q "CHR Login" /var/log/routeros-serial.log || exit 1
